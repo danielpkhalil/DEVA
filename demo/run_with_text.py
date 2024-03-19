@@ -101,8 +101,9 @@ def run_demo(chunk_size, img_path, amp, temporal_setting, size, output, prompt, 
 
     with torch.cuda.amp.autocast(enabled=cfg['amp']):
         for ti, (frame, im_path) in enumerate(tqdm(loader)):
-            mask = get_mask_from_process_frame_with_text(deva, gd_model, sam_model, im_path, result_saver, ti, image_np=frame)
-            masks.append(mask)
+            ms = get_mask_from_process_frame_with_text(deva, gd_model, sam_model, im_path, result_saver, ti, image_np=frame)
+            for m in ms:
+                masks.append(m)
         flush_buffer(deva, result_saver)
     result_saver.end()
 

@@ -1,5 +1,7 @@
 from os import path
-from typing import Dict, List
+from typing import List, Optional, Tuple, Dict
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
 import cv2
 import torch
@@ -169,6 +171,13 @@ def get_mask_from_process_frame_with_text(deva: DEVAInferenceCore,
                 _, mask, new_segments_info = deva.vote_in_temporary_buffer(
                     keyframe_selection='first')
                 prob = deva.incorporate_detection(this_image, mask, new_segments_info)
+                m = process_mask(prob,
+                                 frame_name,
+                                 need_resize=need_resize,
+                                 shape=(h, w),
+                                 image_np=image_np,
+                                 prompts=prompts)
+                masks.append(m.cpu().numpy())  # Add the mask to the list
                 deva.next_voting_frame += cfg['detection_every']
 
                 result_saver.save_mask(prob,
@@ -183,6 +192,13 @@ def get_mask_from_process_frame_with_text(deva: DEVAInferenceCore,
                     this_frame_name = frame_info.name
                     this_image_np = frame_info.image_np
                     prob = deva.step(this_image, None, None)
+                    m = process_mask(prob,
+                                     frame_name,
+                                     need_resize=need_resize,
+                                     shape=(h, w),
+                                     image_np=image_np,
+                                     prompts=prompts)
+                    masks.append(m.cpu().numpy())  # Add the mask to the list
                     result_saver.save_mask(prob,
                                            this_frame_name,
                                            need_resize,
@@ -194,6 +210,13 @@ def get_mask_from_process_frame_with_text(deva: DEVAInferenceCore,
         else:
             # standard propagation
             prob = deva.step(image, None, None)
+            m = process_mask(prob,
+                             frame_name,
+                             need_resize=need_resize,
+                             shape=(h, w),
+                             image_np=image_np,
+                             prompts=prompts)
+            masks.append(m.cpu().numpy())  # Add the mask to the list
             result_saver.save_mask(prob,
                                    frame_name,
                                    need_resize=need_resize,
@@ -208,16 +231,43 @@ def get_mask_from_process_frame_with_text(deva: DEVAInferenceCore,
                                                               prompts, new_min_side)
             frame_info.segments_info = segments_info
             prob = deva.incorporate_detection(image, mask, segments_info)
-            masks.append(mask.cpu().numpy())  # Add the mask to the list
         else:
             # Run the model on this frame
             prob = deva.step(image, None, None)
-            masks.append(prob.cpu().numpy())  # Add the mask to the list
+        m = process_mask(prob,
+                  frame_name,
+                  need_resize=need_resize,
+                  shape=(h, w),
+                  image_np=image_np,
+                  prompts=prompts)
+        masks.append(m.cpu().numpy())  # Add the mask to the list
         result_saver.save_mask(prob,
                                frame_name,
                                need_resize=need_resize,
                                shape=(h, w),
                                image_np=image_np,
                                prompts=prompts)
-
+    # print(len(masks))
+    # print(masks[0].shape)
+    # print(masks[0])
     return masks  # Return the list of masks
+
+def process_mask(prob: torch.Tensor,
+              frame_name: str,
+              need_resize: bool = False,
+              shape: Optional[Tuple[int, int]] = None,
+              save_the_mask: bool = True,
+              image_np: np.ndarray = None,
+              prompts: List[str] = None,
+              path_to_image: str = None):
+
+    if need_resize:
+        prob = F.interpolate(prob.unsqueeze(1), shape, mode='bilinear', align_corners=False)[:,
+                                                                                             0]
+    # Probability mask -> index mask
+    mask = torch.argmax(prob, dim=0)
+
+    # plt.imshow(mask.cpu())
+    # plt.show()
+
+    return mask
